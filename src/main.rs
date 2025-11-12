@@ -1,4 +1,7 @@
-use std::{thread::sleep, time::Duration};
+use std::{
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 use clap::Parser;
 use mpris::{DBusError, FindingError, PlaybackStatus, Player, PlayerFinder};
@@ -10,6 +13,7 @@ const BROWSER_IDENTITY: &str = "Mozilla zen";
 // percentages
 const LOWER_VOLUME: u8 = 45;
 const NORMAL_VOLUME: u8 = 80;
+const VOLUME_TRANSITION: Duration = Duration::from_millis(300);
 
 #[derive(Parser)]
 struct Args {
@@ -66,15 +70,34 @@ fn set_volume(player: &Player, volume: u8) -> Vec<Result<(), DBusError>> {
     let current_volume = normalize_volume(
         player
             .get_volume()
-            .expect("Failed to retrieve {player} volume"),
+            .unwrap_or_else(|e| panic!("Failed to retrieve {:#?} volume: {e}", player)),
     );
+
+    if volume == current_volume {
+        return res;
+    }
+
+    let mut intervel = VOLUME_TRANSITION
+        / current_volume
+            .abs_diff(volume)
+            .into();
     if current_volume > volume {
         for v in (volume..=current_volume).rev() {
+            let t = Instant::now();
             res.push(player.set_volume(denormal_volume(v)));
+            intervel = intervel.saturating_sub(t.elapsed());
+            if !intervel.is_zero() {
+                sleep(intervel);
+            }
         }
     } else {
         for v in current_volume..=volume {
+            let t = Instant::now();
             res.push(player.set_volume(denormal_volume(v)));
+            intervel = intervel.saturating_sub(t.elapsed());
+            if !intervel.is_zero() {
+                sleep(intervel);
+            }
         }
     }
     res
@@ -123,13 +146,13 @@ fn daemon() -> ! {
 fn set_lower(player: &Player) {
     set_volume(player, LOWER_VOLUME)
         .into_iter()
-        .for_each(|r| r.unwrap());
+        .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e}")));
 }
 
 fn set_normal(player: &Player) {
     set_volume(player, NORMAL_VOLUME)
         .into_iter()
-        .for_each(|r| r.unwrap());
+        .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e}")));
 }
 
 fn main() {
