@@ -81,23 +81,19 @@ fn set_volume(player: &Player, volume: u8) -> Vec<Result<(), DBusError>> {
         / current_volume
             .abs_diff(volume)
             .into();
-    if current_volume > volume {
-        for v in (volume..=current_volume).rev() {
-            let t = Instant::now();
-            res.push(player.set_volume(denormal_volume(v)));
-            intervel = intervel.saturating_sub(t.elapsed());
-            if !intervel.is_zero() {
-                sleep(intervel);
-            }
-        }
+
+    let range: Box<dyn Iterator<Item = u8>> = if current_volume > volume {
+        Box::new((volume..=current_volume).rev())
     } else {
-        for v in current_volume..=volume {
-            let t = Instant::now();
-            res.push(player.set_volume(denormal_volume(v)));
-            intervel = intervel.saturating_sub(t.elapsed());
-            if !intervel.is_zero() {
-                sleep(intervel);
-            }
+        Box::new(current_volume..volume)
+    };
+
+    for v in range {
+        let t = Instant::now();
+        res.push(player.set_volume(denormal_volume(v)));
+        intervel = intervel.saturating_sub(t.elapsed());
+        if !intervel.is_zero() {
+            sleep(intervel);
         }
     }
     res
