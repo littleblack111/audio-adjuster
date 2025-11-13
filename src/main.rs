@@ -70,7 +70,7 @@ fn set_volume(player: &Player, volume: u8) -> Vec<Result<(), DBusError>> {
     let current_volume = normalize_volume(
         player
             .get_volume()
-            .unwrap_or_else(|e| panic!("Failed to retrieve {:#?} volume: {e}", player)),
+            .unwrap_or_else(|e| panic!("Failed to retrieve {player:#?} volume: {e}")),
     );
 
     if volume == current_volume {
