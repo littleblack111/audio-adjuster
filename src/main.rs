@@ -5,6 +5,7 @@ use std::{
 
 use clap::Parser;
 use mpris::{DBusError, FindingError, PlaybackStatus, Player, PlayerFinder};
+use unwrap_retry::{RetryableOptionFn, RetryableResultFn};
 
 const PLAYER_IDENTITY: &str = "Spotify";
 const BROWSER_IDENTITY: &str = "Mozilla zen";
@@ -42,19 +43,10 @@ fn get_browser() -> Option<Player> {
 }
 
 fn find_player(name: &str) -> Option<Player> {
-    match PlayerFinder::new()
+    PlayerFinder::new()
         .expect("Failed to create PlayerFinder")
         .find_by_name(name)
-    {
-        Ok(p) => Some(p),
-        Err(e) => {
-            if let FindingError::DBusError(e) = e {
-                panic!("DBus err: {e}")
-            } else {
-                None
-            }
-        }
-    }
+        .ok()
 }
 
 fn normalize_volume(volume: f64) -> u8 {
@@ -67,11 +59,7 @@ fn denormal_volume(volume: u8) -> f64 {
 
 fn set_volume(player: &Player, volume: u8) -> Vec<Result<(), DBusError>> {
     let mut res = Vec::new();
-    let current_volume = normalize_volume(
-        player
-            .get_volume()
-            .unwrap_or_else(|e| panic!("Failed to retrieve {player:#?} volume: {e}")),
-    );
+    let current_volume = normalize_volume((|| player.get_volume()).unwrap_blocking());
 
     if volume == current_volume {
         return res;
@@ -140,15 +128,21 @@ fn daemon() -> ! {
 }
 
 fn set_lower(player: &Player) {
-    set_volume(player, LOWER_VOLUME)
-        .into_iter()
-        .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e}")));
+    set_volume(
+        player,
+        LOWER_VOLUME,
+    )
+    .into_iter()
+    .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e} for player {player:#?}")));
 }
 
 fn set_normal(player: &Player) {
-    set_volume(player, NORMAL_VOLUME)
-        .into_iter()
-        .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e}")));
+    set_volume(
+        player,
+        NORMAL_VOLUME,
+    )
+    .into_iter()
+    .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e} for player {player:#?}")));
 }
 
 fn main() {
@@ -158,7 +152,7 @@ fn main() {
         daemon()
     }
 
-    let player = get_player().unwrap_or_else(|| panic!("Player {PLAYER_IDENTITY} not found"));
+    let player = (|| get_player()).unwrap_blocking();
 
     if args.lower {
         set_lower(&player);

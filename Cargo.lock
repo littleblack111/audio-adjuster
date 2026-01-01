@@ -58,6 +58,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "mpris",
+ "unwrap-retry",
 ]
 
 [[package]]
@@ -383,6 +384,12 @@ name = "unicode-xid"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c1f860d7d29cf02cb2f3f359fd35991af3d30bac52c57d265a3c461074cb4dc"
+
+[[package]]
+name = "unwrap-retry"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1884fdb570a7bba8d8a68565e16a57682cdb2c6628b86c2c466ec92ff0e4a8d8"
 
 [[package]]
 name = "utf8parse"
