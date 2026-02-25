@@ -7,7 +7,7 @@ use clap::Parser;
 use mpris::{DBusError, FindingError, PlaybackStatus, Player, PlayerFinder};
 use unwrap_retry::{RetryableOptionFn, RetryableResultFn};
 
-const PLAYER_IDENTITY: &str = "Spotify";
+const PLAYER_IDENTITY: &str = "Aonsoku";
 const BROWSER_IDENTITY: &str = "Mozilla zen";
 
 // config
