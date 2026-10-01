@@ -1,4 +1,5 @@
 use std::{
+    sync::Arc,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -65,19 +66,16 @@ struct Args {
     browser: String,
 }
 
-fn get_player(id: &str) -> Option<Player> {
-    find_player(id)
-}
-
-fn get_browser(id: &str) -> Option<Player> {
-    find_player(id)
-}
-
 fn find_player(name: &str) -> Option<Player> {
-    PlayerFinder::new()
-        .expect("Failed to create PlayerFinder")
-        .find_by_name(name)
-        .ok()
+    PlayerFinder::new().expect("Failed to create PlayerFinder").find_by_name(name).ok()
+}
+
+fn get_player(name: &str, block: bool) -> Player {
+    let find_player = || find_player(name);
+    match block {
+        true => find_player.unwrap_blocking(),
+        false => find_player().unwrap(),
+    }
 }
 
 fn normalize_volume(volume: f64) -> u8 {
@@ -96,10 +94,7 @@ fn _set_volume(player: &Player, volume: u8, transition: &Duration) -> Vec<Result
         return res;
     }
 
-    let mut intervel = *transition
-        / current_volume
-            .abs_diff(volume)
-            .into();
+    let mut intervel = *transition / current_volume.abs_diff(volume).into();
 
     let range: Box<dyn Iterator<Item = u8>> = if current_volume > volume {
         Box::new((volume..=current_volume).rev())
@@ -119,24 +114,20 @@ fn _set_volume(player: &Player, volume: u8, transition: &Duration) -> Vec<Result
 }
 
 fn is_playing(player: &Player) -> bool {
-    player
-        .get_playback_status()
-        .map(|s| s == PlaybackStatus::Playing)
-        .unwrap_or(false)
+    player.get_playback_status().map(|s| s == PlaybackStatus::Playing).unwrap_or(false)
 }
 
-fn daemon(browser: &str, player: &str, normal: u8, lower: u8, transition: &Duration, loop_delay: &Duration) -> ! {
+fn daemon(
+    browser: &str,
+    player: Player,
+    normal: u8,
+    lower: u8,
+    transition: &Duration,
+    loop_delay: &Duration,
+) -> ! {
     let mut had_browser = false;
     loop {
-        let player = match get_player(player) {
-            Some(p) => p,
-            None => {
-                sleep(Duration::from_secs(5));
-                continue;
-            }
-        };
-
-        match get_browser(browser) {
+        match find_player(browser) {
             Some(browser) => {
                 let browser_playing = is_playing(&browser);
                 if !had_browser && browser_playing {
@@ -151,14 +142,13 @@ fn daemon(browser: &str, player: &str, normal: u8, lower: u8, transition: &Durat
                     had_browser = false;
                 }
             }
-            None => {
+            None =>
                 if had_browser {
                     set_volume(
                         &player, normal, transition,
                     );
                     had_browser = false;
-                }
-            }
+                },
         }
 
         sleep(*loop_delay);
@@ -170,16 +160,34 @@ fn set_volume(player: &Player, volume: u8, transition: &Duration) {
         player, volume, transition,
     )
     .into_iter()
-    .for_each(|r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e} for player {player:#?}")));
+    .for_each(
+        |r| r.unwrap_or_else(|e| eprintln!("Failed to set volume: {e} for player {player:#?}")),
+    );
 }
 
 fn main() {
     let args = Args::parse();
+
     let transition_delay = Duration::from_millis(args.volume_transition_delay);
-    let daemon = || {
+
+    let daemon = move |player: Player| {
+        if let Ok(vol) = player.get_volume() {
+            let player = &player as *const _ as usize;
+            _ = ctrlc::set_handler(
+                move || {
+                    set_volume(
+                        unsafe { &*(player as *const Player) },
+                        normalize_volume(vol),
+                        &transition_delay,
+                    );
+                },
+            )
+            .map_err(|_| eprintln!("Failed to register dtor handlers"));
+        }
+
         daemon(
             &args.browser,
-            &args.player,
+            player,
             args.normal_volume,
             args.lower_volume,
             &transition_delay,
@@ -187,11 +195,10 @@ fn main() {
         )
     };
 
-    if args.daemon {
-        daemon()
-    }
-
-    let player = (|| get_player(&args.player)).unwrap_blocking();
+    let player = get_player(
+        &args.player,
+        args.daemon,
+    );
 
     if args.lower {
         set_volume(
@@ -211,5 +218,5 @@ fn main() {
         return;
     }
 
-    daemon()
+    daemon(player)
 }
