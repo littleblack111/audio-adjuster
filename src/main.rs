@@ -1,5 +1,5 @@
 use std::{
-    sync::Arc,
+    sync::{Arc, LazyLock},
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -9,8 +9,8 @@ use mpris::{DBusError, PlaybackStatus, Player, PlayerFinder};
 use unwrap_retry::{RetryableOptionFn, RetryableResultFn};
 
 // Defaults
-const DEFAULT_PLAYER_IDENTITY: &str = "Spotify";
-const DEFAULT_BROWSER_IDENTITY: &str = "Mozilla zen";
+const DEFAULT_PLAYER_IDENTITY: &str = "spotify";
+const DEFAULT_BROWSER_IDENTITY: &str = "firefox";
 
 // percentages
 const DEFAULT_LOWER_VOLUME: u8 = 45;
@@ -18,6 +18,10 @@ const DEFAULT_NORMAL_VOLUME: u8 = 80;
 const DEFAULT_VOLUME_TRANSITION: u64 = 300;
 
 const DEFAULT_LOOP_DELAY: u64 = 1000;
+
+thread_local! {
+    static PLAYERFINDER: LazyLock<PlayerFinder> = LazyLock::new(|| PlayerFinder::new().expect("Failed to create PlayerFinder"));
+}
 
 #[derive(Parser)]
 struct Args {
@@ -67,7 +71,7 @@ struct Args {
 }
 
 fn find_player(name: &str) -> Option<Player> {
-    PlayerFinder::new().expect("Failed to create PlayerFinder").find_by_name(name).ok()
+    PLAYERFINDER.with(|finder| finder.find_by_name(name).ok())
 }
 
 fn get_player(name: &str, block: bool) -> Player {
